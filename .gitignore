@@ -1,0 +1,4 @@
+*.json
+words.txt
+*.log
+__pycache__/
