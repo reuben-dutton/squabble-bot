@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import random
 
 import numpy as np
 import time
@@ -10,6 +11,16 @@ with open('words.json', 'r') as j:
 
 with open('patterns.json', 'r') as j:
 	patternDict = json.load(j)
+
+with open('precompute.json', 'r') as j:
+	secondGuess = json.load(j)
+
+with open('precomptier2.json', 'r') as j:
+	thirdGuess = json.load(j)
+
+
+def randomWord():
+	return random.choice(baseWordList)
 
 
 def I(p):
@@ -36,28 +47,28 @@ def lfreq(word):
 		freq[char] = freq.get(char, 0) + 1
 	return freq
 
-# def getPattern(guess, word):
-# 	pattern = []
-# 	wfreq = lfreq(word)
-# 	gfreq = {}
-# 	for i in range(5):
-# 		gchar = guess[i]
-# 		wchar = word[i]
-# 		currgfreq = gfreq.get(gchar, 0)
-# 		currwfreq = wfreq.get(gchar, 0)
-# 		if gchar == wchar:
-# 			pattern.append(2)
-# 		elif gchar != wchar and currwfreq > 0 and currgfreq < currwfreq:
-# 			pattern.append(1)
-# 		elif currwfreq == 0 or currgfreq == currwfreq:
-# 			pattern.append(0)
-# 		gfreq[gchar] = currgfreq + 1
-# 	return pattern
+def getPattern(guess, word):
+	pattern = []
+	wfreq = lfreq(word)
+	gfreq = {}
+	for i in range(5):
+		gchar = guess[i]
+		wchar = word[i]
+		currgfreq = gfreq.get(gchar, 0)
+		currwfreq = wfreq.get(gchar, 0)
+		if gchar == wchar:
+			pattern.append(2)
+		elif gchar != wchar and currwfreq > 0 and currgfreq < currwfreq:
+			pattern.append(1)
+		elif currwfreq == 0 or currgfreq == currwfreq:
+			pattern.append(0)
+		gfreq[gchar] = currgfreq + 1
+	return "".join(str(i) for i in pattern)
 
 def getPattern(guess, word):
 	return patternDict[guess + word]
 
-def getMatches(data, wordlist):
+def getMatchesSingle(data, wordlist):
 	guess = data['guess']
 	pattern = data['pattern']
 	matches = []
@@ -67,32 +78,79 @@ def getMatches(data, wordlist):
 			matches.append(word)
 	return matches
 
-def getMatchesMultiple(dataList, wordList=baseWordList):
+def getMatches(dataList, wordList=baseWordList):
 	matches = baseWordList
 	for data in dataList:
 		currMatches = matches
-		matches = set(currMatches).intersection(set(getMatches(data, currMatches)))
-	print(list(matches))
+		matches = set(currMatches).intersection(set(getMatchesSingle(data, currMatches)))
 	return list(matches)
 
 def p(guess, wordList, pattern):
 	data = {'guess': guess, 'pattern': pattern}
-	matches = set(getMatches(data, wordList))
+	matches = set(getMatchesSingle(data, wordList))
 	size = len(matches.intersection(set(wordList)))
 	return size/len(wordList)
 
 
-def bestGuess(wordList):
+def bestGuess(dataList):
 	info = {}
-	if len(wordList) == 1:
-		return wordList[0]
+
+	if len(dataList) == 0:
+		return 'raise'
+	elif len(dataList) == 1:
+		tstr = "".join(str(i) for i in dataList[0]['pattern'])
+		newGuess = secondGuess[tstr]
+		if newGuess != "":
+			return newGuess
+		else:
+			return randomWord()
+	elif len(dataList) == 2:
+		tstr1 = "".join(str(i) for i in dataList[0]['pattern'])
+		tstr2 = "".join(str(i) for i in dataList[1]['pattern'])
+		newGuess = thirdGuess[tstr1 + tstr2]
+		if newGuess != "":
+			return newGuess
+		else:
+			return randomWord()
+
+	matches = getMatches(dataList)
+
+	if len(matches) == 1:
+		return matches[0]
+	elif len(matches) == 0:
+		return randomWord()
+
 	for word in baseWordList:
 		E = 0
 		for pattern in patterns():
-			prob = p(word, wordList, pattern)
+			prob = p(word, matches, pattern)
 			if prob == 0:
 				pass
 			else:
 				E += prob*I(prob)
 		info[word] = E
 	return max(info, key=info.get)
+
+
+
+# precompute = {}
+# for i in range(3**5):
+# 	tstr1 = ternary(i)
+# 	firstPattern = [int(digit) for digit in tstr1]
+# 	newGuess = secondGuess[tstr1]
+# 	for j in range(3**5):
+# 		startTime = time.time()
+# 		tstr2 = ternary(j)
+# 		secondPattern = [int(digit) for digit in tstr2]
+
+# 		print('firstPattern: {}'.format(firstPattern))
+# 		print('secondPattern: {}'.format(secondPattern))
+
+# 		data = [{'guess': 'raise', 'pattern': firstPattern},
+# 				{'guess': newGuess, 'pattern': secondPattern}]
+# 		computeGuess = bestGuess(data)
+# 		precompute[tstr1 + tstr2] = computeGuess
+# 		print(time.time() - startTime)
+
+# with open('precomptier2.json', 'w') as j:
+# 	json.dump(precompute, j)

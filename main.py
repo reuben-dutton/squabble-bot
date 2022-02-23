@@ -1,5 +1,7 @@
 import time
 import random
+import string
+import json
 
 from selenium import webdriver
 
@@ -10,10 +12,20 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
-import logic
+import entropy
 
 
 url = "https://squabble.me/"
+
+BASE_WRONG_LETTER_PROB = 0
+with open('errorchars.json', 'r') as j:
+	errorchars = json.load(j)
+
+# returns a random character which is not the given one
+def randomChar(char):
+	result = random.choice(errorchars[char])
+	return result
+
 
 
 def enter(driver):
@@ -46,26 +58,36 @@ def readyup(driver):
 
 
 def type(driver, word):
+	print(f'typing {word}')
 	body = driver.find_element(By.TAG_NAME, 'body')
-	for character in word:
-		body.send_keys(character)
-		sleeptime = random.random()*0.2
-		time.sleep(sleeptime)
-	try:
-		enterKey = driver.find_element(By.CLASS_NAME, 'css-wea04k')
-		enterKey.click()
-	except:
-		body.send_keys(Keys.BACKSPACE)
-		time.sleep(0.1)
-		body.send_keys(Keys.BACKSPACE)
-		time.sleep(0.1)
-		body.send_keys(Keys.BACKSPACE)
-		time.sleep(0.1)
-		body.send_keys(Keys.BACKSPACE)
-		time.sleep(0.1)
-		body.send_keys(Keys.BACKSPACE)
-		time.sleep(0.2)
-		type(d, word)
+	char_list = [char for char in word]
+	wrong_letters = 0
+	wrong_letter_prob = BASE_WRONG_LETTER_PROB
+	while len(char_list) > 0:
+		if random.random() < wrong_letter_prob and wrong_letters < len(char_list):
+			wrong_letter_prob = (5-len(char_list))*0.2
+			body.send_keys(randomChar(char_list[0]))
+			wrong_letters += 1
+		else:
+			wrong_letter_prob = BASE_WRONG_LETTER_PROB
+			if wrong_letters > 0:
+				time.sleep(0.75*random.random()+0.5)
+			while wrong_letters > 0:
+				body.send_keys(Keys.BACKSPACE)
+				wrong_letters -= 1
+				time.sleep(random.random()*0.1)
+			char = char_list.pop(0)
+			body.send_keys(char)
+		time.sleep(random.random()*0.05)
+
+	enterKey = None
+	while enterKey == None:
+		try:
+			enterKey = driver.find_element(By.CLASS_NAME, 'css-wea04k')
+			enterKey.click()
+		except:
+			pass
+		
 
 
 def getEntries(driver):
@@ -79,30 +101,33 @@ def getEntries(driver):
 		for letter in letters:
 			char = letter.text
 			code = 'none'
-			try:
-				letter.find_element(By.CLASS_NAME, 'css-18037ny')
-				code = 0
-			except:
-				pass
-			try:
-				letter.find_element(By.CLASS_NAME, 'css-tim17a')
-				code = 1
-			except:
-				pass
-			try:
-				letter.find_element(By.CLASS_NAME, 'css-g8h5cn')
-				code = 2
-			except:
-				pass
-			try:
-				letter.find_element(By.CLASS_NAME, 'css-n4oe6o')
-				code = 0
-			except:
-				pass
+			iterations = 0
+			while code == 'none' and iterations < 1000 and (len(word) != 0 or len(word) != 5):
+				try:
+					letter.find_element(By.CLASS_NAME, 'css-18037ny')
+					code = 0
+				except:
+					pass
+				try:
+					letter.find_element(By.CLASS_NAME, 'css-tim17a')
+					code = 1
+				except:
+					pass
+				try:
+					letter.find_element(By.CLASS_NAME, 'css-g8h5cn')
+					code = 2
+				except:
+					pass
+				try:
+					letter.find_element(By.CLASS_NAME, 'css-n4oe6o')
+					code = 0
+				except:
+					pass
+				iterations += 1
 			word += char
 			codes.append(code)
 		if word != "":
-			guesses.append({'guess': word.lower(), 'pattern': codes})
+			guesses.append({'guess': word.lower(), 'pattern': "".join([str(code) for code in codes])})
 	return guesses
 
 
@@ -113,14 +138,15 @@ def gameStart(driver):
 		return False
 	return True
 
+def gameUpdated(driver):
+	try:
+		driver.find_element(By.CLASS_NAME, 'css-1b7d4qo')
+	except:
+		return False
+	return True
+
 def initialguesses(driver):
-	type(driver, 'raise')
-	time.sleep(0.5)
-	type(driver, 'dough')
-	time.sleep(0.5)
-	type(driver, 'testy')
-	time.sleep(0.5)
-	type(driver, 'buxom')
+	type(driver, 'tares')
 
 
 
@@ -142,37 +168,35 @@ started = False
 while not started:
 	started = gameStart(d)
 
-time.sleep(0.5)
-
 
 while True:
 
 	initialguesses(d)
+	
+	updated = False
+	while not updated:
+		updated = gameUpdated(d)
+
 	dataList = getEntries(d)
-
-	matches = logic.getMatchesMultiple(dataList)
-	if len(matches) == 0:
-		bestGuess = 'crate'
-	else:
-		bestGuess = logic.bestGuess(matches)
-
+	print(dataList)
+	bestGuess = entropy.solvedBestGuess(dataList)
 	type(d, bestGuess)
 
-	time.sleep(0.5)
+	while len(dataList) > 0:
 
-	dataList = getEntries(d)
+		updated = False
+		i = 0
+		while not updated and i < 100000:
+			if i >= 100000:
+				print('game over')
+				quit()
+			updated = gameUpdated(d)
 
-	if len(dataList) == 0:
-		continue
+		dataList = getEntries(d)
+		print(dataList)
+		if len(dataList) == 0 or dataList[-1]['pattern'] == '22222':
+			break
+		bestGuess = entropy.solvedBestGuess(dataList)
+		type(d, bestGuess)
 
-	matches = logic.getMatchesMultiple(dataList)
-	if len(matches) == 0:
-		bestGuess = 'crate'
-	else:
-		bestGuess = logic.bestGuess(matches)
-
-	type(d, bestGuess)
-
-	time.sleep(0.5)
-
-	dataList = getEntries(d)
+	print('round finished')

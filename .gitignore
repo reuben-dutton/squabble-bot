@@ -1,4 +1,7 @@
 *.json
-words.txt
+*.txt
 *.log
 __pycache__/
+backup/
+backupold/
+*.npy
